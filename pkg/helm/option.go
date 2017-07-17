@@ -23,6 +23,7 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/metadata"
 
+	"k8s.io/helm/pkg/proto/hapi/chart"
 	cpb "k8s.io/helm/pkg/proto/hapi/chart"
 	"k8s.io/helm/pkg/proto/hapi/release"
 	rls "k8s.io/helm/pkg/proto/hapi/services"
@@ -173,6 +174,13 @@ func ValueOverrides(raw []byte) InstallOption {
 	}
 }
 
+// SecretOverrides specifies a list of secrets to include when installing.
+func SecretOverrides(raw []byte) InstallOption {
+	return func(opts *options) {
+		opts.instReq.Secrets = &cpb.Config{Raw: string(raw), Type: chart.ConfType_SECRETS}
+	}
+}
+
 // ReleaseName specifies the name of the release when installing.
 func ReleaseName(name string) InstallOption {
 	return func(opts *options) {
@@ -247,6 +255,13 @@ func RollbackWait(wait bool) RollbackOption {
 func UpdateValueOverrides(raw []byte) UpdateOption {
 	return func(opts *options) {
 		opts.updateReq.Values = &cpb.Config{Raw: string(raw)}
+	}
+}
+
+// UpdateSecretOverrides specifies a list of secrets to include when upgrading
+func UpdateSecretOverrides(raw []byte) UpdateOption {
+	return func(opts *options) {
+		opts.updateReq.Secrets = &cpb.Config{Raw: string(raw)}
 	}
 }
 

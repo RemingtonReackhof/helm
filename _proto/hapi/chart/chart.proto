@@ -41,4 +41,7 @@ message Chart {
 	// Miscellaneous files in a chart archive,
 	// e.g. README, LICENSE, etc.
 	repeated google.protobuf.Any files = 5;
+
+	// Secrets for this template.
+	hapi.chart.Config secrets = 6;
 }

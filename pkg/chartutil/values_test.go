@@ -102,6 +102,7 @@ where:
 		},
 	}
 	v := &chart.Config{Raw: overideValues}
+	s := &chart.Config{}
 
 	o := ReleaseOptions{
 		Name:      "Seven Voyages",
@@ -117,7 +118,7 @@ where:
 		KubeVersion:   &kversion.Info{Major: "1"},
 	}
 
-	res, err := ToRenderValuesCaps(c, v, o, caps)
+	res, err := ToRenderValuesCaps(c, v, s, o, caps)
 	if err != nil {
 		t.Fatal(err)
 	}

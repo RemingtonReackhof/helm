@@ -40,6 +40,9 @@ const GlobalKey = "global"
 // Values represents a collection of chart values.
 type Values map[string]interface{}
 
+// Secrets represents a collection of chart secrets.
+type Secrets map[string]interface{}
+
 // YAML encodes the Values into a YAML string.
 func (v Values) YAML() (string, error) {
 	b, err := yaml.Marshal(v)
@@ -140,41 +143,44 @@ func ReadValuesFile(filename string) (Values, error) {
 //	- Scalar values and arrays are replaced, maps are merged
 //	- A chart has access to all of the variables for it, as well as all of
 //		the values destined for its dependencies.
-func CoalesceValues(chrt *chart.Chart, vals *chart.Config) (Values, error) {
+func CoalesceValues(chrt *chart.Chart, configs *chart.Config) (Values, error) {
 	cvals := Values{}
+	// Default to using values unless otherwise noted by the vals config
+	confType := chart.ConfType_VALUES
 	// Parse values if not nil. We merge these at the top level because
 	// the passed-in values are in the same namespace as the parent chart.
-	if vals != nil {
-		evals, err := ReadValues([]byte(vals.Raw))
+	if configs != nil {
+		confType = configs.Type
+		evals, err := ReadValues([]byte(configs.Raw))
 		if err != nil {
 			return cvals, err
 		}
-		cvals, err = coalesce(chrt, evals)
+		cvals, err = coalesce(chrt, evals, configs.Type)
 		if err != nil {
 			return cvals, err
 		}
 	}
 
 	var err error
-	cvals, err = coalesceDeps(chrt, cvals)
+	cvals, err = coalesceDeps(chrt, cvals, confType)
 	return cvals, err
 }
 
 // coalesce coalesces the dest values and the chart values, giving priority to the dest values.
 //
 // This is a helper function for CoalesceValues.
-func coalesce(ch *chart.Chart, dest map[string]interface{}) (map[string]interface{}, error) {
+func coalesce(ch *chart.Chart, dest map[string]interface{}, confType chart.ConfType) (map[string]interface{}, error) {
 	var err error
-	dest, err = coalesceValues(ch, dest)
+	dest, err = coalesceValues(ch, dest, confType)
 	if err != nil {
 		return dest, err
 	}
-	coalesceDeps(ch, dest)
+	coalesceDeps(ch, dest, confType)
 	return dest, nil
 }
 
 // coalesceDeps coalesces the dependencies of the given chart.
-func coalesceDeps(chrt *chart.Chart, dest map[string]interface{}) (map[string]interface{}, error) {
+func coalesceDeps(chrt *chart.Chart, dest map[string]interface{}, confType chart.ConfType) (map[string]interface{}, error) {
 	for _, subchart := range chrt.Dependencies {
 		if c, ok := dest[subchart.Metadata.Name]; !ok {
 			// If dest doesn't already have the key, create it.
@@ -190,7 +196,7 @@ func coalesceDeps(chrt *chart.Chart, dest map[string]interface{}) (map[string]in
 
 			var err error
 			// Now coalesce the rest of the values.
-			dest[subchart.Metadata.Name], err = coalesce(subchart, dvmap)
+			dest[subchart.Metadata.Name], err = coalesce(subchart, dvmap, confType)
 			if err != nil {
 				return dest, err
 			}
@@ -263,18 +269,27 @@ func copyMap(src map[string]interface{}) map[string]interface{} {
 // coalesceValues builds up a values map for a particular chart.
 //
 // Values in v will override the values in the chart.
-func coalesceValues(c *chart.Chart, v map[string]interface{}) (map[string]interface{}, error) {
-	// If there are no values in the chart, we just return the given values
-	if c.Values == nil || c.Values.Raw == "" {
-		return v, nil
+func coalesceValues(c *chart.Chart, v map[string]interface{}, confType chart.ConfType) (map[string]interface{}, error) {
+	var nv Values
+	var err error
+	var configs *chart.Config
+
+	// Are we coalescing Secrets or Values?
+	if confType == chart.ConfType_SECRETS {
+		configs = c.Secrets
+	} else {
+		configs = c.Values
 	}
 
-	nv, err := ReadValues([]byte(c.Values.Raw))
+	if configs == nil || configs.Raw == "" {
+		return v, nil
+	}
+	nv, err = ReadValues([]byte(configs.Raw))
 	if err != nil {
 		// On error, we return just the overridden values.
 		// FIXME: We should log this error. It indicates that the YAML data
 		// did not parse.
-		return v, fmt.Errorf("error reading default values (%s): %s", c.Values.Raw, err)
+		return v, fmt.Errorf("error reading default values (%s): %s", configs.Raw, err)
 	}
 
 	for key, val := range nv {
@@ -349,13 +364,14 @@ type ReleaseOptions struct {
 // In Helm 3.0, this will be changed to accept Capabilities as a fourth parameter.
 func ToRenderValues(chrt *chart.Chart, chrtVals *chart.Config, options ReleaseOptions) (Values, error) {
 	caps := &Capabilities{APIVersions: DefaultVersionSet}
-	return ToRenderValuesCaps(chrt, chrtVals, options, caps)
+	secrets := &chart.Config{Type: chart.ConfType_SECRETS}
+	return ToRenderValuesCaps(chrt, chrtVals, secrets, options, caps)
 }
 
 // ToRenderValuesCaps composes the struct from the data coming from the Releases, Charts and Values files
 //
 // This takes both ReleaseOptions and Capabilities to merge into the render values.
-func ToRenderValuesCaps(chrt *chart.Chart, chrtVals *chart.Config, options ReleaseOptions, caps *Capabilities) (Values, error) {
+func ToRenderValuesCaps(chrt *chart.Chart, chrtVals *chart.Config, chrtSecrets *chart.Config, options ReleaseOptions, caps *Capabilities) (Values, error) {
 
 	top := map[string]interface{}{
 		"Release": map[string]interface{}{
@@ -376,8 +392,13 @@ func ToRenderValuesCaps(chrt *chart.Chart, chrtVals *chart.Config, options Relea
 	if err != nil {
 		return top, err
 	}
+	secrets, err := CoalesceValues(chrt, chrtSecrets)
+	if err != nil {
+		return top, err
+	}
 
 	top["Values"] = vals
+	top["Secrets"] = secrets
 	return top, nil
 }
 

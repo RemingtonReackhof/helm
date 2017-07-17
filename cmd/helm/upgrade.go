@@ -74,6 +74,8 @@ type upgradeCmd struct {
 	wait         bool
 	repoURL      string
 	devel        bool
+	secretFiles  valueFiles
+	secrets      []string
 
 	certFile string
 	keyFile  string
@@ -132,6 +134,8 @@ func newUpgradeCmd(client helm.Interface, out io.Writer) *cobra.Command {
 	f.StringVar(&upgrade.keyFile, "key-file", "", "identify HTTPS client using this SSL key file")
 	f.StringVar(&upgrade.caFile, "ca-file", "", "verify certificates of HTTPS-enabled servers using this CA bundle")
 	f.BoolVar(&upgrade.devel, "devel", false, "use development versions, too. Equivalent to version '>0.0.0-a'. If --version is set, this is ignored.")
+	f.Var(&upgrade.secretFiles, "secrets", "specify secrets in a yaml file (can specify multiple)")
+	f.StringArrayVar(&upgrade.secrets, "set-secrets", []string{}, "set secrets on the command line (can specify multiple or separate secrets with commas: key1=val1,key2=val2)")
 
 	f.MarkDeprecated("disable-hooks", "use --no-hooks instead")
 
@@ -177,6 +181,10 @@ func (u *upgradeCmd) run() error {
 	if err != nil {
 		return err
 	}
+	rawSecrets, err := vals(u.secretFiles, u.secrets)
+	if err != nil {
+		return err
+	}
 
 	// Check chart requirements to make sure all dependencies are present in /charts
 	if ch, err := chartutil.Load(chartPath); err == nil {
@@ -195,6 +203,7 @@ func (u *upgradeCmd) run() error {
 		u.release,
 		chartPath,
 		helm.UpdateValueOverrides(rawVals),
+		helm.UpdateSecretOverrides(rawSecrets),
 		helm.UpgradeDryRun(u.dryRun),
 		helm.UpgradeRecreate(u.recreate),
 		helm.UpgradeForce(u.force),

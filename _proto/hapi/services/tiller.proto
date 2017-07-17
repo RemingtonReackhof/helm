@@ -209,6 +209,8 @@ message UpdateReleaseRequest {
 	bool reuse_values = 10;
 	// Force resource update through delete/recreate if needed.
 	bool force = 11;
+	// Secrets
+	hapi.chart.Config secrets = 12;
 }
 
 // UpdateReleaseResponse is the response to an update request.
@@ -271,6 +273,9 @@ message InstallReleaseRequest {
 	// wait, if true, will wait until all Pods, PVCs, and Services are in a ready state
 	// before marking the release as successful. It will wait for as long as timeout
 	bool wait = 9;
+
+	// Secrets is a string containing (unparsed) YAML secrets.
+	hapi.chart.Config secrets = 10;
 }
 
 // InstallReleaseResponse is the response from a release installation.

@@ -118,6 +118,8 @@ type installCmd struct {
 	wait         bool
 	repoURL      string
 	devel        bool
+	secretFiles  valueFiles
+	secrets      []string
 
 	certFile string
 	keyFile  string
@@ -193,6 +195,8 @@ func newInstallCmd(c helm.Interface, out io.Writer) *cobra.Command {
 	f.StringVar(&inst.keyFile, "key-file", "", "identify HTTPS client using this SSL key file")
 	f.StringVar(&inst.caFile, "ca-file", "", "verify certificates of HTTPS-enabled servers using this CA bundle")
 	f.BoolVar(&inst.devel, "devel", false, "use development versions, too. Equivalent to version '>0.0.0-a'. If --version is set, this is ignored.")
+	f.Var(&inst.secretFiles, "secrets", "specify secrets in a yaml file (can specify multiple)")
+	f.StringArrayVar(&inst.secrets, "set-secrets", []string{}, "set secrets on the command line (can specify multiple or separate secrets with commas: key1=val1,key2=val2)")
 
 	return cmd
 }
@@ -205,6 +209,10 @@ func (i *installCmd) run() error {
 	}
 
 	rawVals, err := vals(i.valueFiles, i.values)
+	if err != nil {
+		return err
+	}
+	rawSecrets, err := vals(i.secretFiles, i.secrets)
 	if err != nil {
 		return err
 	}
@@ -240,6 +248,7 @@ func (i *installCmd) run() error {
 		chartRequested,
 		i.namespace,
 		helm.ValueOverrides(rawVals),
+		helm.SecretOverrides(rawSecrets),
 		helm.ReleaseName(i.name),
 		helm.InstallDryRun(i.dryRun),
 		helm.InstallReuseName(i.replace),

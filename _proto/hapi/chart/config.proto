@@ -18,11 +18,19 @@ package hapi.chart;
 
 option go_package = "chart";
 
+enum confType {
+	VALUES = 0;
+	SECRETS = 1;
+}
+
 // Config supplies values to the parametrizable templates of a chart.
 message Config {
 	string raw = 1;
 
 	map<string,Value> values = 2;
+
+	confType type = 3;
+
 }
 
 // Value describes a configuration value as a string.

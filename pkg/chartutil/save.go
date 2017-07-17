@@ -162,6 +162,13 @@ func writeTarContents(out *tar.Writer, c *chart.Chart, prefix string) error {
 		}
 	}
 
+	// Save secrets.yaml
+	if c.Secrets != nil && len(c.Secrets.Raw) > 0 {
+		if err := writeToTar(out, base+"/secrets.yaml", []byte(c.Secrets.Raw)); err != nil {
+			return err
+		}
+	}
+
 	// Save templates
 	for _, f := range c.Templates {
 		n := filepath.Join(base, f.Name)
