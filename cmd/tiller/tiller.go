@@ -54,6 +54,7 @@ const (
 
 	storageMemory    = "memory"
 	storageConfigMap = "configmap"
+	storageSecret    = "secret"
 
 	probeAddr = ":44135"
 	traceAddr = ":44136"
@@ -109,6 +110,12 @@ func start() {
 		cfgmaps.Log = newLogger("storage/driver").Printf
 
 		env.Releases = storage.Init(cfgmaps)
+		env.Releases.Log = newLogger("storage").Printf
+	case storageSecret:
+		secrets := driver.NewSecrets(clientset.Core().Secrets(namespace()))
+		secrets.Log = newLogger("storage/driver").Printf
+
+		env.Releases = storage.Init(secrets)
 		env.Releases.Log = newLogger("storage").Printf
 	}
 

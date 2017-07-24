@@ -32,49 +32,53 @@ import (
 	rspb "k8s.io/helm/pkg/proto/hapi/release"
 )
 
-var _ Driver = (*ConfigMaps)(nil)
+var _ Driver = (*Secrets)(nil)
 
-// ConfigMapsDriverName is the string name of the driver.
-const ConfigMapsDriverName = "ConfigMap"
+// SecretsDriverName is the string name of the driver.
+const SecretsDriverName = "Secret"
 
-// ConfigMaps is a wrapper around an implementation of a kubernetes
-// ConfigMapsInterface.
-type ConfigMaps struct {
-	impl internalversion.ConfigMapInterface
+// var b64 = base64.StdEncoding
+
+// var magicGzip = []byte{0x1f, 0x8b, 0x08}
+
+// Secrets is a wrapper around an implementation of a kubernetes
+// SecretsInterface.
+type Secrets struct {
+	impl internalversion.SecretInterface
 	Log  func(string, ...interface{})
 }
 
-// NewConfigMaps initializes a new ConfigMaps wrapping an implmenetation of
-// the kubernetes ConfigMapsInterface.
-func NewConfigMaps(impl internalversion.ConfigMapInterface) *ConfigMaps {
-	return &ConfigMaps{
+// NewSecrets initializes a new Secrets wrapping an implmenetation of
+// the kubernetes SecretsInterface.
+func NewSecrets(impl internalversion.SecretInterface) *Secrets {
+	return &Secrets{
 		impl: impl,
 		Log:  func(_ string, _ ...interface{}) {},
 	}
 }
 
 // Name returns the name of the driver.
-func (cfgmaps *ConfigMaps) Name() string {
-	return ConfigMapsDriverName
+func (secrets *Secrets) Name() string {
+	return SecretsDriverName
 }
 
 // Get fetches the release named by key. The corresponding release is returned
 // or error if not found.
-func (cfgmaps *ConfigMaps) Get(key string) (*rspb.Release, error) {
-	// fetch the configmap holding the release named by key
-	obj, err := cfgmaps.impl.Get(key, metav1.GetOptions{})
+func (secrets *Secrets) Get(key string) (*rspb.Release, error) {
+	// fetch the secret holding the release named by key
+	obj, err := secrets.impl.Get(key, metav1.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil, ErrReleaseNotFound(key)
 		}
 
-		cfgmaps.Log("get: failed to get %q: %s", key, err)
+		secrets.Log("get: failed to get %q: %s", key, err)
 		return nil, err
 	}
-	// found the configmap, decode the base64 data string
-	r, err := decodeRelease(obj.Data["release"])
+	// found the secret, decode the base64 data string
+	r, err := decodeRelease(string(obj.Data["release"]))
 	if err != nil {
-		cfgmaps.Log("get: failed to decode data %q: %s", key, err)
+		secrets.Log("get: failed to decode data %q: %s", key, err)
 		return nil, err
 	}
 	// return the release object
@@ -83,25 +87,25 @@ func (cfgmaps *ConfigMaps) Get(key string) (*rspb.Release, error) {
 
 // List fetches all releases and returns the list releases such
 // that filter(release) == true. An error is returned if the
-// configmap fails to retrieve the releases.
-func (cfgmaps *ConfigMaps) List(filter func(*rspb.Release) bool) ([]*rspb.Release, error) {
+// secret fails to retrieve the releases.
+func (secrets *Secrets) List(filter func(*rspb.Release) bool) ([]*rspb.Release, error) {
 	lsel := kblabels.Set{"OWNER": "TILLER"}.AsSelector()
 	opts := metav1.ListOptions{LabelSelector: lsel.String()}
 
-	list, err := cfgmaps.impl.List(opts)
+	list, err := secrets.impl.List(opts)
 	if err != nil {
-		cfgmaps.Log("list: failed to list: %s", err)
+		secrets.Log("list: failed to list: %s", err)
 		return nil, err
 	}
 
 	var results []*rspb.Release
 
-	// iterate over the configmaps object list
+	// iterate over the secrets object list
 	// and decode each release
 	for _, item := range list.Items {
-		rls, err := decodeRelease(item.Data["release"])
+		rls, err := decodeRelease(string(item.Data["release"]))
 		if err != nil {
-			cfgmaps.Log("list: failed to decode release: %v: %s", item, err)
+			secrets.Log("list: failed to decode release: %v: %s", item, err)
 			continue
 		}
 		if filter(rls) {
@@ -112,8 +116,8 @@ func (cfgmaps *ConfigMaps) List(filter func(*rspb.Release) bool) ([]*rspb.Releas
 }
 
 // Query fetches all releases that match the provided map of labels.
-// An error is returned if the configmap fails to retrieve the releases.
-func (cfgmaps *ConfigMaps) Query(labels map[string]string) ([]*rspb.Release, error) {
+// An error is returned if the secret fails to retrieve the releases.
+func (secrets *Secrets) Query(labels map[string]string) ([]*rspb.Release, error) {
 	ls := kblabels.Set{}
 	for k, v := range labels {
 		if errs := validation.IsValidLabelValue(v); len(errs) != 0 {
@@ -124,9 +128,9 @@ func (cfgmaps *ConfigMaps) Query(labels map[string]string) ([]*rspb.Release, err
 
 	opts := metav1.ListOptions{LabelSelector: ls.AsSelector().String()}
 
-	list, err := cfgmaps.impl.List(opts)
+	list, err := secrets.impl.List(opts)
 	if err != nil {
-		cfgmaps.Log("query: failed to query with labels: %s", err)
+		secrets.Log("query: failed to query with labels: %s", err)
 		return nil, err
 	}
 
@@ -136,9 +140,9 @@ func (cfgmaps *ConfigMaps) Query(labels map[string]string) ([]*rspb.Release, err
 
 	var results []*rspb.Release
 	for _, item := range list.Items {
-		rls, err := decodeRelease(item.Data["release"])
+		rls, err := decodeRelease(string(item.Data["release"]))
 		if err != nil {
-			cfgmaps.Log("query: failed to decode release: %s", err)
+			secrets.Log("query: failed to decode release: %s", err)
 			continue
 		}
 		results = append(results, rls)
@@ -146,89 +150,89 @@ func (cfgmaps *ConfigMaps) Query(labels map[string]string) ([]*rspb.Release, err
 	return results, nil
 }
 
-// Create creates a new ConfigMap holding the release. If the
-// ConfigMap already exists, ErrReleaseExists is returned.
-func (cfgmaps *ConfigMaps) Create(key string, rls *rspb.Release) error {
-	// set labels for configmaps object meta data
+// Create creates a new Secret holding the release. If the
+// Secret already exists, ErrReleaseExists is returned.
+func (secrets *Secrets) Create(key string, rls *rspb.Release) error {
+	// set labels for secrets object meta data
 	var lbs labels
 
 	lbs.init()
 	lbs.set("CREATED_AT", strconv.Itoa(int(time.Now().Unix())))
 
-	// create a new configmap to hold the release
-	obj, err := newConfigMapsObject(key, rls, lbs)
+	// create a new secret to hold the release
+	obj, err := newSecretsObject(key, rls, lbs)
 	if err != nil {
-		cfgmaps.Log("create: failed to encode release %q: %s", rls.Name, err)
+		secrets.Log("create: failed to encode release %q: %s", rls.Name, err)
 		return err
 	}
-	// push the configmap object out into the kubiverse
-	if _, err := cfgmaps.impl.Create(obj); err != nil {
+	// push the secret object out into the kubiverse
+	if _, err := secrets.impl.Create(obj); err != nil {
 		if apierrors.IsAlreadyExists(err) {
 			return ErrReleaseExists(rls.Name)
 		}
 
-		cfgmaps.Log("create: failed to create: %s", err)
+		secrets.Log("create: failed to create: %s", err)
 		return err
 	}
 	return nil
 }
 
-// Update updates the ConfigMap holding the release. If not found
-// the ConfigMap is created to hold the release.
-func (cfgmaps *ConfigMaps) Update(key string, rls *rspb.Release) error {
-	// set labels for configmaps object meta data
+// Update updates the Secret holding the release. If not found
+// the Secret is created to hold the release.
+func (secrets *Secrets) Update(key string, rls *rspb.Release) error {
+	// set labels for secrets object meta data
 	var lbs labels
 
 	lbs.init()
 	lbs.set("MODIFIED_AT", strconv.Itoa(int(time.Now().Unix())))
 
-	// create a new configmap object to hold the release
-	obj, err := newConfigMapsObject(key, rls, lbs)
+	// create a new secret object to hold the release
+	obj, err := newSecretsObject(key, rls, lbs)
 	if err != nil {
-		cfgmaps.Log("update: failed to encode release %q: %s", rls.Name, err)
+		secrets.Log("update: failed to encode release %q: %s", rls.Name, err)
 		return err
 	}
-	// push the configmap object out into the kubiverse
-	_, err = cfgmaps.impl.Update(obj)
+	// push the secret object out into the kubiverse
+	_, err = secrets.impl.Update(obj)
 	if err != nil {
-		cfgmaps.Log("update: failed to update: %s", err)
+		secrets.Log("update: failed to update: %s", err)
 		return err
 	}
 	return nil
 }
 
-// Delete deletes the ConfigMap holding the release named by key.
-func (cfgmaps *ConfigMaps) Delete(key string) (rls *rspb.Release, err error) {
+// Delete deletes the Secret holding the release named by key.
+func (secrets *Secrets) Delete(key string) (rls *rspb.Release, err error) {
 	// fetch the release to check existence
-	if rls, err = cfgmaps.Get(key); err != nil {
+	if rls, err = secrets.Get(key); err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil, ErrReleaseExists(rls.Name)
 		}
 
-		cfgmaps.Log("delete: failed to get release %q: %s", key, err)
+		secrets.Log("delete: failed to get release %q: %s", key, err)
 		return nil, err
 	}
 	// delete the release
-	if err = cfgmaps.impl.Delete(key, &metav1.DeleteOptions{}); err != nil {
+	if err = secrets.impl.Delete(key, &metav1.DeleteOptions{}); err != nil {
 		return rls, err
 	}
 	return rls, nil
 }
 
-// newConfigMapsObject constructs a kubernetes ConfigMap object
-// to store a release. Each configmap data entry is the base64
+// newSecretsObject constructs a kubernetes Secret object
+// to store a release. Each secret data entry is the base64
 // encoded string of a release's binary protobuf encoding.
 //
-// The following labels are used within each configmap:
+// The following labels are used within each secret:
 //
-//    "MODIFIED_AT"    - timestamp indicating when this configmap was last modified. (set in Update)
-//    "CREATED_AT"     - timestamp indicating when this configmap was created. (set in Create)
+//    "MODIFIED_AT"    - timestamp indicating when this secret was last modified. (set in Update)
+//    "CREATED_AT"     - timestamp indicating when this secret was created. (set in Create)
 //    "VERSION"        - version of the release.
 //    "STATUS"         - status of the release (see proto/hapi/release.status.pb.go for variants)
-//    "OWNER"          - owner of the configmap, currently "TILLER".
+//    "OWNER"          - owner of the secret, currently "TILLER".
 //    "NAME"           - name of the release.
 //
-func newConfigMapsObject(key string, rls *rspb.Release, lbs labels) (*api.ConfigMap, error) {
+func newSecretsObject(key string, rls *rspb.Release, lbs labels) (*api.Secret, error) {
 	const owner = "TILLER"
 
 	// encode the release
@@ -247,12 +251,12 @@ func newConfigMapsObject(key string, rls *rspb.Release, lbs labels) (*api.Config
 	lbs.set("STATUS", rspb.Status_Code_name[int32(rls.Info.Status.Code)])
 	lbs.set("VERSION", strconv.Itoa(int(rls.Version)))
 
-	// create and return configmap object
-	return &api.ConfigMap{
+	// create and return secret object
+	return &api.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   key,
 			Labels: lbs.toMap(),
 		},
-		Data: map[string]string{"release": s},
+		Data: map[string][]byte{"release": []byte(s)},
 	}, nil
 }

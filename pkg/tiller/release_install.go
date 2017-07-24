@@ -79,7 +79,7 @@ func (s *ReleaseServer) prepareRelease(req *services.InstallReleaseRequest) (*re
 		Revision:  revision,
 		IsInstall: true,
 	}
-	valuesToRender, err := chartutil.ToRenderValuesCaps(req.Chart, req.Values, options, caps)
+	valuesToRender, err := chartutil.ToRenderValuesCaps(req.Chart, req.Values, req.Secrets, options, caps)
 	if err != nil {
 		return nil, err
 	}

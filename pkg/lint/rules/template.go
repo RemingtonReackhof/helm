@@ -65,7 +65,7 @@ func Templates(linter *support.Linter) {
 		},
 		TillerVersion: tversion.GetVersionProto(),
 	}
-	valuesToRender, err := chartutil.ToRenderValuesCaps(chart, chart.Values, options, caps)
+	valuesToRender, err := chartutil.ToRenderValuesCaps(chart, chart.Values, chart.Secrets, options, caps)
 	if err != nil {
 		// FIXME: This seems to generate a duplicate, but I can't find where the first
 		// error is coming from.
